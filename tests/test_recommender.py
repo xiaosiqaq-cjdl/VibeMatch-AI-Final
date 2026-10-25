@@ -1,4 +1,12 @@
+from pathlib import Path
+
+import pytest
+
 from src.recommender import Song, UserProfile, Recommender
+from src.recommender import load_songs, recommend_songs
+
+
+SONGS_CSV = Path(__file__).resolve().parents[1] / "data" / "songs.csv"
 
 def make_small_recommender() -> Recommender:
     songs = [
@@ -59,3 +67,54 @@ def test_explain_recommendation_returns_non_empty_string():
     explanation = rec.explain_recommendation(user, song)
     assert isinstance(explanation, str)
     assert explanation.strip() != ""
+
+
+@pytest.mark.parametrize(
+    ("profile", "expected_top_song"),
+    [
+        (
+            {
+                "genre": "pop",
+                "mood": "happy",
+                "energy": 0.9,
+                "tempo_bpm": 130,
+                "valence": 0.85,
+                "likes_acoustic": False,
+            },
+            "Sunrise City",
+        ),
+        (
+            {
+                "genre": "lofi",
+                "mood": "chill",
+                "energy": 0.4,
+                "tempo_bpm": 78,
+                "valence": 0.6,
+                "likes_acoustic": True,
+            },
+            "Library Rain",
+        ),
+        (
+            {
+                "genre": "rock",
+                "mood": "intense",
+                "energy": 0.9,
+                "tempo_bpm": 150,
+                "valence": 0.5,
+                "likes_acoustic": False,
+            },
+            "Storm Runner",
+        ),
+    ],
+    ids=["high-energy-pop", "chill-lofi", "deep-intense-rock"],
+)
+def test_recommendations_match_diverse_profiles(profile, expected_top_song):
+    songs = load_songs(str(SONGS_CSV))
+
+    results = recommend_songs(profile, songs, k=3)
+
+    assert len(results) == 3
+    assert results[0][0]["title"] == expected_top_song
+    assert [score for _, score, _ in results] == sorted(
+        (score for _, score, _ in results), reverse=True
+    )
