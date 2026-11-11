@@ -1,6 +1,8 @@
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 import csv
+import logging
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Song:
@@ -38,33 +40,113 @@ class Recommender:
     def __init__(self, songs: List[Song]):
         self.songs = songs
 
+
     def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
-        # TODO: Implement recommendation logic
-        return self.songs[:k]
+        user_prefs = {
+            "genre": user.favorite_genre,
+            "mood": user.favorite_mood,
+            "energy": user.target_energy,
+            "tempo_bpm": 100,
+            "valence": 0.5,
+            "likes_acoustic": user.likes_acoustic,
+        }
+
+        song_dicts = [vars(song) for song in self.songs]
+
+        results = recommend_songs(user_prefs, song_dicts, k=k)
+
+        return [
+            Song(**song_data)
+            for song_data, score, explanation in results
+        ]
+
+
 
     def explain_recommendation(self, user: UserProfile, song: Song) -> str:
-        # TODO: Implement explanation logic
-        return "Explanation placeholder"
+        user_prefs = {
+            "genre": user.favorite_genre,
+            "mood": user.favorite_mood,
+            "energy": user.target_energy,
+            "tempo_bpm": 100,
+            "valence": 0.5,
+            "likes_acoustic": user.likes_acoustic,
+        }
+
+        score, reasons = score_song(user_prefs, vars(song))
+
+        return f"Match score: {score:.2f}/100. " + "; ".join(reasons)
+
+
 
 def load_songs(csv_path: str) -> List[Dict]:
-    """
-    Loads songs from a CSV file.
-    Required by src/main.py
-    """
+    """Load and validate song data from a CSV file."""
+
+    required_fields = {
+        "id", "title", "artist", "genre", "mood",
+        "energy", "tempo_bpm", "valence",
+        "danceability", "acousticness"
+    }
+
+    numeric_fields = {
+    "energy": float,
+    "tempo_bpm": float,
+    "valence": float,
+    "danceability": float,
+    "acousticness": float
+    }
+
     songs = []
 
-    with open(csv_path, mode='r', encoding='utf-8') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            row["id"] = int(row["id"])
-            row["energy"] = float(row["energy"])
-            row["tempo_bpm"] = float(row["tempo_bpm"])
-            row["valence"] = float(row["valence"])
-            row["danceability"] = float(row["danceability"])
-            row["acousticness"] = float(row["acousticness"])
-            songs.append(row)
-    print(f"Loading songs from {csv_path}...")
+    try:
+        with open(csv_path, mode="r", encoding="utf-8-sig", newline="") as csvfile:
+            reader = csv.DictReader(csvfile)
+
+            if not reader.fieldnames:
+                raise ValueError("CSV is empty or has no header.")
+
+            missing = required_fields - set(reader.fieldnames)
+            if missing:
+                raise ValueError(
+                    f"Missing required columns: {sorted(missing)}"
+                )
+
+            for line_number, row in enumerate(reader, start=2):
+                for field in required_fields:
+                    if row.get(field) is None or not str(row[field]).strip():
+                        raise ValueError(
+                            f"Row {line_number}: missing value in '{field}'"
+                        )
+
+                for field, converter in numeric_fields.items():
+                    try:
+                        row[field] = converter(row[field])
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"Row {line_number}: invalid value for '{field}'"
+                        ) from exc
+
+                for field in ("energy", "valence", "danceability", "acousticness"):
+                    if not 0 <= row[field] <= 1:
+                        raise ValueError(
+                            f"Row {line_number}: '{field}' must be between 0 and 1"
+                        )
+
+                if row["tempo_bpm"] <= 0:
+                    raise ValueError(
+                        f"Row {line_number}: tempo_bpm must be positive"
+                    )
+
+                songs.append(row)
+
+    except FileNotFoundError as exc:
+        logger.error("Song dataset not found: %s", csv_path)
+        raise FileNotFoundError(
+            f"Song dataset not found: {csv_path}"
+        ) from exc
+
+    logger.info("Loaded %d songs from %s", len(songs), csv_path)
     return songs
+
 
 def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     """

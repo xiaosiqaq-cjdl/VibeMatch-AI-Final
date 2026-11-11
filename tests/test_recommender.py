@@ -35,7 +35,7 @@ def make_small_recommender() -> Recommender:
             acousticness=0.9,
         ),
     ]
-    return Recommender(songs)
+    return Recommender(list(reversed(songs)))
 
 
 def test_recommend_returns_songs_sorted_by_score():
@@ -118,3 +118,31 @@ def test_recommendations_match_diverse_profiles(profile, expected_top_song):
     assert [score for _, score, _ in results] == sorted(
         (score for _, score, _ in results), reverse=True
     )
+
+
+def test_missing_csv_file():
+    with pytest.raises(FileNotFoundError, match="Song dataset not found"):
+        load_songs("nonexistent_songs.csv")
+
+
+def test_missing_required_column(tmp_path):
+    bad_csv = tmp_path / "bad_songs.csv"
+    bad_csv.write_text(
+        "id,title,artist\n1,Test Song,Test Artist\n",
+        encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="Missing required columns"):
+        load_songs(str(bad_csv))
+
+
+def test_invalid_numeric_value(tmp_path):
+    bad_csv = tmp_path / "invalid_songs.csv"
+    bad_csv.write_text(
+        "id,title,artist,genre,mood,energy,tempo_bpm,valence,danceability,acousticness\n"
+        "1,Test Song,Test Artist,pop,happy,high,120,0.8,0.7,0.2\n",
+        encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="invalid value for 'energy'"):
+        load_songs(str(bad_csv))
