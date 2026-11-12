@@ -148,50 +148,96 @@ def load_songs(csv_path: str) -> List[Dict]:
     return songs
 
 
+
 def score_song(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     """
-    Scores a single song against user preferences.
-    Required by recommend_songs() and src/main.py
+    Score a song using only specified user preferences.
+    Normalize active weights to keep scores between 0 and 100.
     """
-    genre_match = user_prefs["genre"].casefold() == song["genre"].casefold()
-    mood_match = user_prefs["mood"].casefold() == song["mood"].casefold()
 
-    G = 1.0 if genre_match else 0.0
-    M = 1.0 if mood_match else 0.0
+    weights = {
+        "genre": 0.35,
+        "mood": 0.21,
+        "valence": 0.09,
+        "energy": 0.175,
+        "tempo_bpm": 0.075,
+        "likes_acoustic": 0.10,
+    }
 
+    weighted_score = 0.0
+    active_weight = 0.0
     reasons = []
 
+    # 1. Genre matching
+    genre = user_prefs.get("genre")
+    if genre is not None:
+        match = float(genre.casefold() == song["genre"].casefold())
+        weighted_score += weights["genre"] * match
+        active_weight += weights["genre"]
 
-    if genre_match:
-        reasons.append("Genre matches")
-    if mood_match:
-        reasons.append("Mood matches")
+        if match:
+            reasons.append("Genre matches")
 
-    V = 1 - abs(song["valence"] - user_prefs["valence"])
-    En = 1 - abs(song["energy"] - user_prefs["energy"])
-    T = max(0, 1 - abs(song["tempo_bpm"] - user_prefs["tempo_bpm"]) / 160)
+    # 2. Mood matching
+    mood = user_prefs.get("mood")
+    if mood is not None:
+        match = float(mood.casefold() == song["mood"].casefold())
+        weighted_score += weights["mood"] * match
+        active_weight += weights["mood"]
 
-    if user_prefs["likes_acoustic"]:
-        C = song["acousticness"]
-    else:
-        C = 1 - song["acousticness"]
+        if match:
+            reasons.append("Mood matches")
 
-    reasons.append(f"Valence similarity: {V:.2f}")
-    reasons.append(f"Energy similarity: {En:.2f}")
-    reasons.append(f"Tempo similarity: {T:.2f}")
-    reasons.append(f"Acoustic preference match: {C:.2f}")
+    # 3. Valence similarity
+    valence = user_prefs.get("valence")
+    if valence is not None:
+        similarity = max(0.0, 1 - abs(song["valence"] - valence))
+        weighted_score += weights["valence"] * similarity
+        active_weight += weights["valence"]
+        reasons.append(f"Valence similarity: {similarity:.2f}")
 
-    emotion_score = 0.70 * M + 0.30 * V
-    activity_score = 0.70 * En + 0.30 * T
+    # 4. Energy similarity
+    energy = user_prefs.get("energy")
+    if energy is not None:
+        similarity = max(0.0, 1 - abs(song["energy"] - energy))
+        weighted_score += weights["energy"] * similarity
+        active_weight += weights["energy"]
+        reasons.append(f"Energy similarity: {similarity:.2f}")
 
-    score = 100 * (
-        0.35 * G
-        + 0.30 * emotion_score
-        + 0.25 * activity_score
-        + 0.10 * C
-    )
+    # 5. Tempo similarity
+    tempo = user_prefs.get("tempo_bpm")
+    if tempo is not None:
+        similarity = max(
+            0.0,
+            1 - abs(song["tempo_bpm"] - tempo) / 160
+        )
+        weighted_score += weights["tempo_bpm"] * similarity
+        active_weight += weights["tempo_bpm"]
+        reasons.append(f"Tempo similarity: {similarity:.2f}")
+
+    # 6. Acoustic preference
+    acoustic = user_prefs.get("likes_acoustic")
+    if acoustic is not None:
+        similarity = (
+            song["acousticness"]
+            if acoustic
+            else 1 - song["acousticness"]
+        )
+
+        weighted_score += weights["likes_acoustic"] * similarity
+        active_weight += weights["likes_acoustic"]
+        reasons.append(
+            f"Acoustic preference match: {similarity:.2f}"
+        )
+
+    # 7. Normalize the score
+    if active_weight == 0:
+        raise ValueError("At least one music preference is required.")
+
+    score = 100 * weighted_score / active_weight
 
     return score, reasons
+
 
 def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
     """
@@ -205,5 +251,13 @@ def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tup
         explanation = "; ".join(reasons)
         recommendations.append((song, score, explanation))
 
-    recommendations.sort(key=lambda item: item[1], reverse=True)
+    
+    recommendations.sort(
+        key=lambda item: (
+            -item[1],
+            -int(item[0].get("popularity", 0)),
+            str(item[0]["id"])
+        )
+    )
+
     return recommendations[:k]

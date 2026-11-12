@@ -1,0 +1,162 @@
+[
+  {
+    "input": "I want relaxing acoustic music.",
+    "expected": {
+      "genre": null,
+      "mood": "calm",
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": true
+    },
+    "actual": {
+      "genre": null,
+      "mood": null,
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": false
+  },
+  {
+    "input": "Play some happy pop music.",
+    "expected": {
+      "genre": "pop",
+      "mood": "happy",
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "actual": {
+      "genre": "pop",
+      "mood": "happy",
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": true
+  },
+  {
+    "input": "I want energetic rock music.",
+    "expected": {
+      "genre": "rock",
+      "mood": null,
+      "energy": 0.8,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "actual": {
+      "genre": "rock",
+      "mood": null,
+      "energy": 0.8,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": true
+  },
+  {
+    "input": "Give me calm jazz.",
+    "expected": {
+      "genre": "jazz",
+      "mood": "calm",
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "actual": {
+      "genre": "jazz",
+      "mood": "calm",
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": true
+  },
+  {
+    "input": "I want something sad.",
+    "expected": {
+      "genre": null,
+      "mood": "sad",
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "actual": {
+      "genre": null,
+      "mood": "sad",
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": true
+  },
+  {
+    "input": "Play music around 120 BPM.",
+    "expected": {
+      "genre": null,
+      "mood": null,
+      "energy": null,
+      "tempo_bpm": 120,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "actual": {
+      "genre": null,
+      "mood": null,
+      "energy": null,
+      "tempo_bpm": 120,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": true
+  },
+  {
+    "input": "I prefer electronic music with high energy.",
+    "expected": {
+      "genre": "electronic",
+      "mood": null,
+      "energy": 0.8,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "actual": {
+      "genre": "electronic",
+      "mood": null,
+      "energy": 0.8,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": true
+  },
+  {
+    "input": "Surprise me.",
+    "expected": {
+      "genre": null,
+      "mood": null,
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "actual": {
+      "genre": null,
+      "mood": null,
+      "energy": null,
+      "tempo_bpm": null,
+      "valence": null,
+      "likes_acoustic": null
+    },
+    "passed": true
+  }
+]

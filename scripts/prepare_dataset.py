@@ -13,13 +13,10 @@ import random
 from collections import defaultdict
 
 OUTPUT_FILE = BASE_DIR / "data" / "songs_real.csv"
+# Use all availavle genres
+GENRES = None
 
-GENRES = [
-    "pop", "rock", "jazz", "classical", "electronic",
-    "hip-hop", "r-n-b", "country", "metal", "ambient"
-]
-
-SONGS_PER_GENRE = 50
+SONGS_PER_GENRE = None
 RANDOM_SEED = 42
 
 
@@ -35,10 +32,13 @@ def infer_mood(energy, valence):
         return "sad"
 
 
+
 def prepare_dataset():
-    """Clean and sample real Spotify song data."""
-    genre_groups = defaultdict(list)
-    seen_ids = set()
+    """Clean the full Spotify dataset without sampling."""
+    cleaned = {}
+    total_rows = 0
+    invalid_rows = 0
+    duplicate_rows = 0
 
     with INPUT_FILE.open(
         "r", encoding="utf-8-sig", newline=""
@@ -46,13 +46,15 @@ def prepare_dataset():
         reader = csv.DictReader(file)
 
         for row in reader:
-            genre = row["track_genre"].lower().strip()
-            track_id = row["track_id"]
+            total_rows += 1
+            track_id = (row.get("track_id") or "").strip()
 
-            if genre not in GENRES:
+            if not track_id:
+                invalid_rows += 1
                 continue
 
-            if not track_id or track_id in seen_ids:
+            if track_id in cleaned:
+                duplicate_rows += 1
                 continue
 
             try:
@@ -61,23 +63,40 @@ def prepare_dataset():
                 danceability = float(row["danceability"])
                 acousticness = float(row["acousticness"])
                 tempo = float(row["tempo"])
+                popularity = int(row["popularity"])
+
+                if not 0 <= popularity <= 100:
+                    invalid_rows += 1
+                    continue
 
                 if not all(
                     0 <= value <= 1
-                    for value in [
-                        energy, valence, danceability, acousticness
-                    ]
+                    for value in (
+                        energy, valence,
+                        danceability, acousticness
+                    )
                 ):
+                    invalid_rows += 1
                     continue
 
-                if tempo <= 0:
+                if not 0 < tempo <= 300:
+                    invalid_rows += 1
                     continue
 
-                song = {
+                title = (row.get("track_name") or "").strip()
+                artist = (row.get("artists") or "").strip()
+                genre = (row.get("track_genre") or "").strip().lower()
+
+                if not title or not artist or not genre:
+                    invalid_rows += 1
+                    continue
+
+                cleaned[track_id] = {
                     "id": track_id,
-                    "title": row["track_name"],
-                    "artist": row["artists"],
+                    "title": title,
+                    "artist": artist,
                     "genre": genre,
+                    "popularity": popularity,
                     "mood": infer_mood(energy, valence),
                     "energy": energy,
                     "tempo_bpm": tempo,
@@ -86,46 +105,33 @@ def prepare_dataset():
                     "acousticness": acousticness,
                 }
 
-                if not song["title"] or not song["artist"]:
-                    continue
-
-                genre_groups[genre].append(song)
-                seen_ids.add(track_id)
-
             except (ValueError, TypeError, KeyError):
+                invalid_rows += 1
                 continue
 
-    random.seed(RANDOM_SEED)
-    selected_songs = []
-
-    for genre in GENRES:
-        songs = genre_groups[genre]
-        sample_size = min(SONGS_PER_GENRE, len(songs))
-
-        selected_songs.extend(
-            random.sample(songs, sample_size)
-        )
-
-        print(f"{genre}: {sample_size} songs selected")
-
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    output_file = BASE_DIR / "data" / "songs_full.csv"
 
     fieldnames = [
         "id", "title", "artist", "genre", "mood",
         "energy", "tempo_bpm", "valence",
-        "danceability", "acousticness"
+        "danceability", "acousticness", "popularity"
     ]
 
-    with OUTPUT_FILE.open(
+    with output_file.open(
         "w", encoding="utf-8", newline=""
     ) as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(selected_songs)
+        writer.writerows(cleaned.values())
 
-    print(f"\nTotal songs: {len(selected_songs)}")
-    print(f"Saved to: {OUTPUT_FILE}")
+    genres = {song["genre"] for song in cleaned.values()}
 
+    print(f"Original rows: {total_rows}")
+    print(f"Invalid rows: {invalid_rows}")
+    print(f"Duplicate track IDs: {duplicate_rows}")
+    print(f"Cleaned unique songs: {len(cleaned)}")
+    print(f"Genres: {len(genres)}")
+    print(f"Saved to: {output_file}")
 
 if __name__ == "__main__":
     prepare_dataset()
