@@ -136,3 +136,83 @@ def test_popularity_tiebreaker():
 
     assert results[0][0]["id"] == "song_high"
     assert results[1][0]["id"] == "song_low"
+
+
+
+from src.preference_validator import validate_and_correct
+
+
+def test_acoustic_negation_does_not_create_genre():
+    """Avoid converting acoustic instrument preference into a genre."""
+
+    request = "I want music without acoustic instruments."
+
+    llm_preferences = {
+        "genre": None,
+        "mood": None,
+        "energy": None,
+        "tempo_bpm": None,
+        "valence": None,
+        "likes_acoustic": False,
+    }
+
+    corrected, corrections = validate_and_correct(
+        request,
+        llm_preferences
+    )
+
+    assert corrected["genre"] is None
+    assert corrected["likes_acoustic"] is False
+
+    assert not any(
+        correction["field"] == "genre"
+        for correction in corrections
+    )
+
+
+
+import pytest
+
+from src.preference_validator import detect_explicit_preferences
+
+
+@pytest.mark.parametrize(
+    "user_input,expected",
+    [
+        ("I want rock music.", "rock"),
+        ("Avoid rock music.", None),
+        ("I don't want jazz music.", None),
+        ("Play some blues music.", "blues"),
+        ("No metal music, please.", None),
+    ]
+)
+def test_negated_genres(user_input, expected):
+    result = detect_explicit_preferences(user_input)
+
+    assert result.get("genre") == expected
+
+
+
+def test_validator_removes_negated_genre():
+    request = "I don't want jazz music."
+
+    llm_preferences = {
+        "genre": "jazz",
+        "mood": None,
+        "energy": None,
+        "tempo_bpm": None,
+        "valence": None,
+        "likes_acoustic": None,
+    }
+
+    corrected, corrections = validate_and_correct(
+        request,
+        llm_preferences
+    )
+
+    assert corrected["genre"] is None
+    assert any(
+        item["field"] == "genre"
+        and item["after"] is None
+        for item in corrections
+    )

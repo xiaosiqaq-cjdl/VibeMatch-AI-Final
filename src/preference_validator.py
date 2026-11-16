@@ -1,10 +1,34 @@
 import re
 
 
-SUPPORTED_GENRES = (
-    "pop", "rock", "jazz", "classical", "electronic",
-    "hip-hop", "r-n-b", "country", "metal", "ambient"
-)
+
+import csv
+from pathlib import Path
+
+
+def load_supported_genres():
+    """Load available genres from the cleaned song dataset."""
+
+    project_root = Path(__file__).resolve().parent.parent
+    csv_path = project_root / "data" / "songs_full.csv"
+
+    genres = set()
+
+    with csv_path.open(
+        "r", encoding="utf-8", newline=""
+    ) as file:
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            genre = row["genre"].strip().lower()
+
+            if genre:
+                genres.add(genre)
+
+    return tuple(sorted(genres, key=len, reverse=True))
+
+
+SUPPORTED_GENRES = load_supported_genres()
 
 MOOD_KEYWORDS = {
     "calm": ("calm", "relaxing", "peaceful", "soothing"),
@@ -19,12 +43,37 @@ def detect_explicit_preferences(user_request):
     text = user_request.lower()
     detected = {}
 
+    
     # Explicit genre detection
+    # Avoid interpreting "acoustic" as a genre when
+    # the user is referring to instruments or sound texture.
+    
+    # Explicit genre detection with negation handling
     for genre in SUPPORTED_GENRES:
+        if genre == "acoustic":
+            continue
+
         pattern = rf"(?<!\w){re.escape(genre)}(?!\w)"
-        if re.search(pattern, text):
+
+        for match in re.finditer(pattern, text):
+            before = text[max(0, match.start() - 40):match.start()]
+
+            negated = re.search(
+                r"\b(?:no|not|avoid|without|don't want|do not want)"
+                r"(?:\s+\w+){0,3}\s*$",
+                before
+            )
+
+            if negated:
+                continue
+
             detected["genre"] = genre
             break
+
+        if "genre" in detected:
+            break
+
+
 
     # Explicit mood detection
     
@@ -78,6 +127,30 @@ def detect_explicit_preferences(user_request):
     return detected
 
 
+
+def detect_negated_genres(user_request):
+    """Detect explicitly rejected music genres."""
+    text = user_request.lower()
+    rejected = set()
+
+    for genre in SUPPORTED_GENRES:
+        pattern = rf"(?<!\w){re.escape(genre)}(?!\w)"
+
+        for match in re.finditer(pattern, text):
+            before = text[max(0, match.start() - 40):match.start()]
+
+            negated = re.search(
+                r"\b(?:no|not|avoid|without|don't want|do not want)"
+                r"(?:\s+\w+){0,3}\s*$",
+                before
+            )
+
+            if negated:
+                rejected.add(genre)
+
+    return rejected
+
+
 def validate_and_correct(user_request, llm_preferences):
     """Correct explicit preferences while preserving other LLM fields."""
 
@@ -95,5 +168,15 @@ def validate_and_correct(user_request, llm_preferences):
             })
 
             corrected[field] = value
+
+    rejected_genres = detect_negated_genres(user_request)
+
+    if corrected.get("genre") in rejected_genres:
+        corrections.append({
+            "field": "genre",
+            "before": corrected["genre"],
+            "after": None,
+        })
+        corrected["genre"] = None
 
     return corrected, corrections

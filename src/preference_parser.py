@@ -23,7 +23,7 @@ PREFERENCE_SCHEMA = {
 }
 
 
-def parse_user_preferences(user_request, client=None):
+def parse_user_preferences(user_request, client=None, think=True):
     """Extract structured preferences using a local LLM."""
 
     if not isinstance(user_request, str) or not user_request.strip():
@@ -164,7 +164,7 @@ def parse_user_preferences(user_request, client=None):
             {"role": "user", "content": user_request},
         ],
         format=PREFERENCE_SCHEMA,
-        think=True,
+        think=think,
         options={"temperature": 0},
     )
 
