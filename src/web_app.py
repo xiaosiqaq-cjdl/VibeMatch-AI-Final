@@ -14,16 +14,28 @@ logger = logging.getLogger(__name__)
 SONGS = load_songs("data/songs_full.csv")
 
 
-def recommend_music(user_request):
+def recommend_music(user_request, progress=gr.Progress()):
     if not user_request.strip():
         return "Please describe what music you want."
 
+    
     try:
+        progress(
+            0.1,
+            desc="Understanding your music preferences with Qwen..."
+        )
+
         result = run_ai_recommender(
             user_request,
             SONGS,
             defaults={}
         )
+
+        progress(
+            0.9,
+            desc="Preparing your recommendations..."
+        )
+
 
         if result.get("needs_clarification"):
             return (
@@ -42,6 +54,13 @@ def recommend_music(user_request):
             if value is not None:
                 output.append(f"- **{key}:** {value}")
 
+        excluded_genres = result.get("excluded_genres", [])
+
+        if excluded_genres:
+            output.append(
+                f"- **Excluded genres:** {', '.join(excluded_genres)}"
+            )
+
         output.append("\n## Top 5 Songs")
 
         for index, song in enumerate(
@@ -51,9 +70,16 @@ def recommend_music(user_request):
                 f"### {index}. {song['title']}"
             )
             output.append(f"**Artist:** {song['artist']}")
-            output.append(
-                f"**Match Score:** {song['score']:.2f}/100"
-            )
+            
+            if song.get("score") is None:
+                output.append(
+                    "**Recommendation Type:** Popular pick"
+                )
+            else:
+                output.append(
+                    f"**Match Score:** {song['score']:.2f}/100"
+                )
+
 
             reasons = song["reasons"]
             if isinstance(reasons, list):
@@ -97,6 +123,7 @@ demo = gr.Interface(
 
 
 if __name__ == "__main__":
+    demo.queue(default_concurrency_limit=1)
     demo.launch(
         share=True,
         server_name="127.0.0.1",

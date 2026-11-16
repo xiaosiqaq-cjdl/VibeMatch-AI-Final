@@ -30,6 +30,108 @@ def load_supported_genres():
 
 SUPPORTED_GENRES = load_supported_genres()
 
+def normalize_genre_name(name: str) -> str:
+    """Normalize case and formatting differences in genre names."""
+    return re.sub(r"[\s\-_&]+", "", name.casefold())
+
+
+def build_genre_lookup(genres):
+    """Build normalized name -> canonical genre mapping."""
+    lookup = {}
+
+    for genre in genres:
+        normalized = normalize_genre_name(genre)
+
+        # Avoid silently choosing between ambiguous collisions
+        if normalized in lookup and lookup[normalized] != genre:
+            raise ValueError(
+                f"Genre normalization collision: "
+                f"{lookup[normalized]} and {genre}"
+            )
+
+        lookup[normalized] = genre
+
+    return lookup
+
+
+GENRE_LOOKUP = build_genre_lookup(SUPPORTED_GENRES)
+
+
+def find_genre_mentions(text):
+    """
+    Find canonical genre names in user text.
+
+    Returns:
+        List of (genre, start_position, end_position)
+    """
+    text = text.casefold()
+    mentions = []
+
+    # Match genre names and formatting variants
+    for canonical in SUPPORTED_GENRES:
+        if canonical == "acoustic":
+            continue
+
+        parts = re.split(r"[\s\-_&]+", canonical)
+
+        pattern = r"[\s\-_&]*".join(
+            re.escape(part) for part in parts
+        )
+
+        for match in re.finditer(
+            rf"(?<!\w){pattern}(?!\w)",
+            text
+        ):
+            mentions.append((
+                canonical,
+                match.start(),
+                match.end(),
+            ))
+
+    
+    # Prefer longer matches when genre mentions overlap
+    mentions.sort(
+        key=lambda item: (
+            -(item[2] - item[1]),
+            item[1],
+            item[0],
+        )
+    )
+
+    selected = []
+
+    for candidate in mentions:
+        genre, start, end = candidate
+
+        overlaps = any(
+            start < existing_end and end > existing_start
+            for _, existing_start, existing_end in selected
+        )
+
+        if not overlaps:
+            selected.append(candidate)
+
+    # Return matches in the order they appear in the text
+    return sorted(selected, key=lambda item: item[1])
+
+
+
+
+
+# Common alternative spellings for music genres
+GENRE_ALIASES = {
+    "jpop": "j-pop",
+    "j pop": "j-pop",
+    "j-pop": "j-pop",
+    "kpop": "k-pop",
+    "k pop": "k-pop",
+    "hip hop": "hip-hop",
+    "hiphop": "hip-hop",
+    "rnb": "r-n-b",
+    "r&b": "r-n-b",
+}
+
+
 MOOD_KEYWORDS = {
     "calm": ("calm", "relaxing", "peaceful", "soothing"),
     "happy": ("happy", "joyful", "cheerful", "upbeat"),
@@ -48,34 +150,24 @@ def detect_explicit_preferences(user_request):
     # Avoid interpreting "acoustic" as a genre when
     # the user is referring to instruments or sound texture.
     
-    # Explicit genre detection with negation handling
-    for genre in SUPPORTED_GENRES:
-        if genre == "acoustic":
-            continue
+   
+    # Detect positive genres using the shared matcher
+    for genre, start, end in find_genre_mentions(text):
+        before = text[max(0, start - 40):start]
 
-        pattern = rf"(?<!\w){re.escape(genre)}(?!\w)"
+        negated = re.search(
+            r"\b(?:no|not|avoid|without|don't want|do not want)"
+            r"(?:\s+\w+){0,3}\s*$",
+            before
+        )
 
-        for match in re.finditer(pattern, text):
-            before = text[max(0, match.start() - 40):match.start()]
-
-            negated = re.search(
-                r"\b(?:no|not|avoid|without|don't want|do not want)"
-                r"(?:\s+\w+){0,3}\s*$",
-                before
-            )
-
-            if negated:
-                continue
-
+        if not negated:
             detected["genre"] = genre
-            break
-
-        if "genre" in detected:
-            break
 
 
 
-    # Explicit mood detection
+
+    
     
     # Explicit mood detection with simple negation handling
     for mood, keywords in MOOD_KEYWORDS.items():
@@ -128,25 +220,23 @@ def detect_explicit_preferences(user_request):
 
 
 
+
 def detect_negated_genres(user_request):
     """Detect explicitly rejected music genres."""
-    text = user_request.lower()
+    text = user_request.casefold()
     rejected = set()
 
-    for genre in SUPPORTED_GENRES:
-        pattern = rf"(?<!\w){re.escape(genre)}(?!\w)"
+    for genre, start, end in find_genre_mentions(text):
+        before = text[max(0, start - 40):start]
 
-        for match in re.finditer(pattern, text):
-            before = text[max(0, match.start() - 40):match.start()]
+        negated = re.search(
+            r"\b(?:no|not|avoid|without|don't want|do not want)"
+            r"(?:\s+\w+){0,3}\s*$",
+            before
+        )
 
-            negated = re.search(
-                r"\b(?:no|not|avoid|without|don't want|do not want)"
-                r"(?:\s+\w+){0,3}\s*$",
-                before
-            )
-
-            if negated:
-                rejected.add(genre)
+        if negated:
+            rejected.add(genre)
 
     return rejected
 

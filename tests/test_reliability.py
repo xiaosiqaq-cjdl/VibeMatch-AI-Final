@@ -216,3 +216,53 @@ def test_validator_removes_negated_genre():
         and item["after"] is None
         for item in corrections
     )
+
+
+import pytest
+from src.preference_validator import detect_explicit_preferences
+
+
+@pytest.mark.parametrize(
+    "user_input,expected",
+    [
+        ("Give me some Jpop music.", "j-pop"),
+        ("I want J-pop songs.", "j-pop"),
+        ("Play Japanese pop? Actually, J pop.", "j-pop"),
+        ("I don't want Jpop music.", None),
+    ]
+)
+def test_genre_aliases(user_input, expected):
+    result = detect_explicit_preferences(user_input)
+
+    assert result.get("genre") == expected
+
+
+from src.preference_validator import detect_negated_genres
+
+
+def test_negated_genre_alias():
+    result = detect_negated_genres(
+        "I don't want Jpop music."
+    )
+
+    assert "j-pop" in result
+
+
+
+@pytest.mark.parametrize(
+    "user_input,expected_genre,excluded",
+    [
+        ("Give me Jpop music.", "j-pop", set()),
+        ("No Jpop music.", None, {"j-pop"}),
+        ("I want rock but not jazz.", "rock", {"jazz"}),
+        ("I want jazz but not rock.", "jazz", {"rock"}),
+    ],
+)
+def test_mixed_genre_preferences(
+    user_input, expected_genre, excluded
+):
+    positive = detect_explicit_preferences(user_input)
+    negative = detect_negated_genres(user_input)
+
+    assert positive.get("genre") == expected_genre
+    assert negative == excluded

@@ -1,6 +1,10 @@
-from src.preference_validator import validate_and_correct
+from src.preference_validator import (
+    validate_and_correct,
+    detect_negated_genres,
+)
 from src.preference_parser import parse_user_preferences
 from src.ai_recommender import retrieve_songs
+
 
 
 
@@ -56,25 +60,54 @@ def run_ai_recommender(user_request, songs, defaults, client=None):
         defaults
     )
 
-    if all(value is None for value in ranking_prefs.values()):
-        return {
-            "user_request": user_request,
-            "parsed_preferences": parsed,
-            "corrected_preferences": corrected,
-            "corrections": corrections,
-            "ranking_preferences": ranking_prefs,
-            "defaulted_fields": defaulted_fields,
-            "recommendations": [],
-            "needs_clarification": True,
-        }
 
-    # Step 3: Use our own ranking algorithm
-    recommendations = retrieve_songs(
-        ranking_prefs,
-        songs,
-        k=5
+    
+    # Detect genres the user wants to exclude
+    excluded_genres = detect_negated_genres(user_request)
+
+    # Filter candidate songs before ranking
+    filtered_songs = [
+        song
+        for song in songs
+        if song["genre"].lower() not in excluded_genres
+    ]
+
+    has_positive_preferences = any(
+        value is not None
+        for value in ranking_prefs.values()
     )
 
+    if has_positive_preferences:
+        recommendations = retrieve_songs(
+            ranking_prefs,
+            filtered_songs,
+            k=5
+        )
+    elif excluded_genres:
+        # Exclusion-only fallback:
+        # prioritize popularity without inventing preferences
+        ranked = sorted(
+            filtered_songs,
+            key=lambda song: (
+                -int(song.get("popularity", 0)),
+                str(song["id"])
+            )
+        )
+
+        recommendations = [
+            {
+                **song,
+                "score": None,
+                "reasons": "Popular song outside excluded genres"
+            }
+            for song in ranked[:5]
+        ]
+    else:
+        # No usable musical preference
+        recommendations = []
+
+
+    
     return {
         "user_request": user_request,
         "parsed_preferences": parsed,
@@ -83,5 +116,18 @@ def run_ai_recommender(user_request, songs, defaults, client=None):
         "ranking_preferences": ranking_prefs,
         "defaulted_fields": defaulted_fields,
         "recommendations": recommendations,
-        "needs_clarification": False,
+        "excluded_genres": sorted(excluded_genres),
+        "candidate_count": len(filtered_songs),
+        "needs_clarification": (
+            not has_positive_preferences
+            and not excluded_genres
+        ),
+        "ranking_strategy": (
+            "preference_score"
+            if has_positive_preferences
+            else "popularity_fallback"
+            if excluded_genres
+            else "clarification"
+        ),
     }
+
