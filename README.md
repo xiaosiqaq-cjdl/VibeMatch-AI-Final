@@ -1,134 +1,521 @@
-# 🎵 Music Recommender Simulation
+# VibeMatch AI
 
-## Project Summary
+**An Explainable Music Recommendation System Powered by a Local Large Language Model**
 
-This is a small content-based music recommender. It loads a 10-song catalog from a CSV file, compares each song's attributes with a sample user's preferences, calculates an explainable match score, and prints the five highest-scoring songs. The project also evaluates the ranking with several sample profiles and a weight-shift experiment.
+## 1. Project Overview
+
+VibeMatch AI is a music recommendation application that translates natural-language requests into personalized song recommendations.
+
+Instead of requiring users to manually select genres, moods, or audio features, VibeMatch allows users to describe the music they want in everyday language.
+
+For example:
+
+- "I want relaxing acoustic music for studying."
+- "Give me something energetic for my workout."
+- "Play some J-pop music."
+- "I want upbeat music, but no jazz."
+
+The system combines a locally running Qwen3 4B language model with deterministic preference validation and a custom feature-based recommendation algorithm.
+
+### Original Project
+
+VibeMatch AI extends the **Module 3 Music Recommendation Simulation** developed during AI110.
+
+The original project demonstrated a basic content-based recommendation system that matched structured user preferences against a small collection of songs using audio characteristics such as genre, mood, energy, and tempo.
+
+The final project transforms that prototype into an end-to-end AI application with natural-language understanding, a significantly expanded real-world music dataset, reliability safeguards, automated evaluation, and an interactive web interface.
+
+### Key Features
+
+- **Natural Language Understanding:** Uses Qwen3 4B through Ollama to extract structured music preferences.
+- **Hybrid Preference Validation:** Combines LLM outputs with deterministic rules to improve reliability.
+- **Explainable Recommendations:** Scores songs using genre, mood, energy, tempo, valence, and acoustic preferences.
+- **Large Music Dataset:** Uses 89,583 unique Spotify track IDs across 113 genre labels after data cleaning.
+- **Negative Preference Handling:** Supports excluding unwanted music genres.
+- **Popularity-Based Ranking:** Uses song popularity as a secondary ranking criterion and as a fallback when only exclusions are specified.
+- **Web Interface:** Provides an interactive Gradio application for entering music requests and viewing recommendations.
+- **Automated Testing:** Includes unit and integration tests for preference extraction, recommendation logic, and reliability.
+
+### Project Objective
+
+The goal of VibeMatch AI is not to let an LLM directly choose songs.
+
+Instead, the LLM is responsible for interpreting the user's language, while a separate, transparent recommendation algorithm calculates song rankings.
+
+This separation makes the system easier to test, explain, and improve.
 
 ---
 
-## How The System Works
+## 2. System Architecture
 
-Each song is described by its genre, mood, energy, tempo, valence, danceability, and acousticness. The current example user profile specifies a favorite genre and mood, target energy, tempo and valence, and whether they prefer acoustic songs.
+See [System Architecture](diagrams/architecture.md) for the complete Mermaid diagram and component descriptions.
 
-Current mood gives context; the listening experience they want determines the recommendation targets. For example, a user who feels down but wants to feel energized can be matched with upbeat, higher-energy songs. If they feel down and want to relax, the system can target calmer songs with a moderate or positive valence instead of matching sadness directly.
+VibeMatch AI uses a modular pipeline connecting language understanding, deterministic validation, retrieval, ranking, and user-facing recommendations.
 
-The recommender compares each song with those targets and calculates a core score. Related features are grouped to reduce double-counting:
+The architecture consists of the following stages:
 
-- **Genre (`G`):** 1 if the song's genre matches a favorite genre, otherwise 0.
-- **Emotion (`E`):** mood match is the main signal, with valence similarity as support.
-- **Activity (`A`):** energy similarity is the main signal, with tempo similarity as support.
-- **Acoustic preference (`C`):** how well the song's acousticness matches the user's preference.
+1. **User Input:** The user describes their music preferences through the Gradio interface.
+2. **LLM Parsing:** Qwen3 4B interprets the request and returns structured preferences.
+3. **Deterministic Validation:** Python rules recover explicit preferences, normalize genre names, and handle negation.
+4. **Candidate Retrieval and Filtering:** The system retrieves songs from the cleaned Spotify dataset and removes excluded genres.
+5. **Ranking:** A custom scoring algorithm ranks songs using the user's expressed preferences.
+6. **Explanation:** The application provides song titles, artists, matching scores where applicable, and human-readable recommendation reasons.
+7. **Evaluation:** Automated tests and experimental scripts verify individual components and system behavior.
 
-The core score weights genre at 35%, emotion at 30%, activity at 25%, and acoustic preference at 10%. Within emotion, mood contributes 70% and valence 30%; within activity, energy contributes 70% and tempo 30%:
+The Mermaid architecture diagram is stored at:
 
-```text
-core_score = 100 × (0.35 × G + 0.30 × E + 0.25 × A + 0.10 × C)
+`diagrams/architecture.md`
 
-E = 0.70 × M + 0.30 × V
-A = 0.70 × En + 0.30 × T
-```
+### Main Components
 
-`M` is 1 when the song mood matches the target mood, otherwise 0. The numeric similarities range from 0 (least similar) to 1 (exact match):
-
-```text
-V  = 1 - abs(song_valence - target_valence)
-En = 1 - abs(song_energy - target_energy)
-T  = max(0, 1 - abs(song_tempo_bpm - target_tempo_bpm) / 160)
-
-C = song_acousticness       if the user prefers acoustic songs
-C = 1 - song_acousticness  otherwise
-```
-
-The tempo divisor is an initial scaling choice that can be adjusted after testing. The current command-line version uses a sample preference dictionary in `src/main.py`; it does not interactively ask about the user's current mood or desired listening experience. Those could be added later to choose the target mood, valence, energy, and tempo. The implemented score uses the genre, mood, valence, energy, tempo, and acousticness preferences described above. `danceability` is loaded from the CSV but is not currently part of the score. Songs are ranked by score and the highest-scoring ones are recommended. This is a simple content-based approach: it uses song attributes and stated preferences rather than listening history.
+| File | Responsibility |
+|---|---|
+| `src/llm_client.py` | Connects to the local Ollama model |
+| `src/preference_parser.py` | Extracts structured preferences using Qwen |
+| `src/preference_validator.py` | Validates preferences, resolves genre aliases, and handles negation |
+| `src/pipeline.py` | Coordinates preference processing and recommendation |
+| `src/ai_recommender.py` | Connects structured preferences to song retrieval |
+| `src/recommender.py` | Loads song data and calculates recommendation scores |
+| `src/web_app.py` | Provides the Gradio web interface |
+| `scripts/prepare_dataset.py` | Cleans the original Spotify dataset |
+| `scripts/evaluate_thinking.py` | Compares LLM Thinking and Non-Thinking modes |
+| `tests/` | Contains unit, reliability, and integration tests |
 
 ---
 
-## Getting Started
+## 3. Music Dataset
 
-### Setup
+### Data Source
 
-1. Create a virtual environment (optional but recommended):
+The project uses a publicly available Spotify tracks dataset containing approximately 114,000 original records.
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate      # Mac or Linux
-   .venv\Scripts\activate         # Windows
-   ```
+The dataset contains track metadata and audio-related features, including:
 
-2. Install dependencies
+- Track ID
+- Track name
+- Artist
+- Genre
+- Popularity
+- Energy
+- Valence
+- Tempo
+- Danceability
+- Acousticness
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Data Cleaning
 
-3. Run the app:
+The preprocessing pipeline performs the following operations:
 
-   ```bash
-   python -m src.main
-   ```
+1. Removes records with missing essential information.
+2. Validates numerical audio features.
+3. Removes duplicate track IDs.
+4. Preserves Spotify genre labels.
+5. Derives a simplified mood category from numerical audio characteristics.
+6. Exports a cleaned dataset for recommendation.
 
-### Running Tests
+### Cleaning Results
 
-Run the tests with:
+| Metric | Result |
+|---|---:|
+| Original records | 114,000 |
+| Invalid records | 158 |
+| Duplicate track IDs | 24,259 |
+| Cleaned unique track IDs | 89,583 |
+| Genre categories | 113 |
+
+The resulting dataset is saved as:
+
+`data/songs_full.csv`
+
+The recommendation engine operates on this local dataset without requiring a paid music API.
+
+**Dataset limitation:** Unique Spotify track IDs do not necessarily correspond to unique compositions. Multiple recordings, releases, and remastered versions may remain. Genre labels may also be broad or imperfect.
+
+---
+
+## 4. Installation and Usage
+
+### Requirements
+
+- Python and pip
+- Ollama
+- Qwen3 4B
+- Dependencies listed in `requirements.txt`
+
+The project was developed and tested primarily on Windows using VS Code and PowerShell.
+
+### Step 1: Clone the Repository
 
 ```bash
-python -m pytest
+git clone https://github.com/xiaosiqaq-cjdl/VibeMatch-AI-Final.git
+cd VibeMatch-AI-Final
 ```
 
-You can add more tests in `tests/test_recommender.py`.
+### Step 2: Create a Virtual Environment
 
----
-
-## Sample Recommendation Output
-
-The sample profile in `src/main.py` is pop, happy, energy 0.8, tempo 125 BPM, valence 0.9, and no acoustic preference. Running `python -m src.main` produces:
-
-```
-Top recommendations:
-
-Sunrise City - Score: 96.98
-Because: Genre matches; Mood matches; Valence similarity: 0.94; Energy similarity: 0.98; Tempo similarity: 0.96; Acoustic preference match: 0.82
-
-Gym Hero - Score: 74.73
-Because: Genre matches; Valence similarity: 0.87; Energy similarity: 0.87; Tempo similarity: 0.96; Acoustic preference match: 0.95
-
-Rooftop Lights - Score: 59.94
-Because: Mood matches; Valence similarity: 0.91; Energy similarity: 0.96; Tempo similarity: 0.99; Acoustic preference match: 0.65
-
-Night Drive Loop - Score: 36.53
-Because: Valence similarity: 0.59; Energy similarity: 0.95; Tempo similarity: 0.91; Acoustic preference match: 0.78
-
-Storm Runner - Score: 36.03
-Because: Valence similarity: 0.58; Energy similarity: 0.89; Tempo similarity: 0.83; Acoustic preference match: 0.90
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or demo video link here -->
+### Step 3: Install Dependencies
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+### Step 4: Install Ollama and Download the Model
+
+Install Ollama from its official website:
+
+https://ollama.com/
+
+Then download the required local model:
+
+```powershell
+ollama pull qwen3:4b
+```
+
+Verify that the model is available:
+
+```powershell
+ollama list
+```
+
+### Step 5: Prepare the Dataset
+
+Download the source Spotify dataset and place its CSV file in the location expected by `scripts/prepare_dataset.py`.
+
+Run:
+
+```powershell
+python scripts/prepare_dataset.py
+```
+
+The script generates `data/songs_full.csv`.
+
+**Important:** The complete raw dataset may not be included in the GitHub repository. Users must obtain the original dataset separately, following its distribution terms.
+
+### Step 6: Configure Web Authentication
+
+For the current Windows PowerShell session:
+
+```powershell
+$env:VIBEMATCH_USER = "your_username"
+$env:VIBEMATCH_PASSWORD = "your_password"
+```
+
+Do not commit credentials or API keys to GitHub.
+
+### Step 7: Launch VibeMatch
+
+```powershell
+python -m src.web_app
+```
+
+Open the local Gradio URL displayed in the terminal.
+
+The application requires the local Ollama service to be available.
+
+### Step 8: Run Automated Tests
+
+```powershell
+python -m pytest -q
+```
+
+Tests cover recommendation behavior, preference validation, negative preferences, genre normalization, and pipeline integration.
+
+Some tests or evaluation routines may require a running local LLM.
 
 ---
 
-## Experiments You Tried
+## 5. Recommendation Algorithm
 
-I compared the original scoring weights with an experimental weight shift. In the original formula, genre has 35% of the total weight and energy's effective weight is 25% × 70% = 17.5%. For the experiment, I halved genre to 17.5% and doubled energy to 35%, keeping mood (21%), valence (9%), tempo (7.5%), and acousticness (10%) unchanged. The weights still sum to 100%. I calculated the experimental scores separately without changing the recommender implementation.
+VibeMatch uses a content-based recommendation algorithm rather than relying on an LLM to generate song selections.
 
-| Profile | Original top 3 | After weight shift |
-|---|---|---|
-| Sample Pop/Happy | Sunrise City (96.98), Gym Hero (74.73), Rooftop Lights (59.94) | Sunrise City (96.63), Rooftop Lights (76.74), Gym Hero (72.45) |
-| High-Energy Pop | Sunrise City (96.15), Gym Hero (77.16), Rooftop Lights (58.41) | Sunrise City (94.75), Gym Hero (76.64), Rooftop Lights (73.46) |
-| Chill Lofi | Library Rain (97.44), Midnight Coding (96.39), Focus Flow (76.62) | Library Rain (96.57), Midnight Coding (96.04), Focus Flow (76.62) |
-| Deep Intense Rock | Storm Runner (98.55), Gym Hero (60.70), Night Drive Loop (37.21) | Storm Runner (98.38), Gym Hero (77.68), Sunrise City (52.34) |
+### Preference Extraction
 
-The high-energy profile still ranked energetic songs near the top, but the lower genre weight helped Rooftop Lights rise above Gym Hero for the sample profile. The Chill Lofi ranking did not change, while the Deep Intense Rock profile gave a much larger boost to other high-energy songs. This shows that changing weights can affect the balance between a user's genre match and numeric energy similarity; the experiment is illustrative, not proof of better recommendations.
+The LLM extracts six structured preference fields:
+
+```python
+{
+    "genre": None,
+    "mood": None,
+    "energy": 0.8,
+    "tempo_bpm": None,
+    "valence": None,
+    "likes_acoustic": None
+}
+```
+
+Unspecified preferences remain `None`.
+
+The system distinguishes a user's current condition from the desired musical experience.
+
+For example:
+
+- "I'm tired" does not necessarily imply a particular music preference.
+- "I want music to keep me awake" implies a high-energy preference.
+
+### Dynamic Weighted Scoring
+
+Songs receive scores based on the relevant musical attributes requested by the user.
+
+The system normalizes the weighted score over active preference dimensions so that unspecified preferences do not automatically influence the result.
+
+This approach allows the algorithm to prioritize explicit user preferences without inventing additional requirements.
+
+### Deterministic Ranking
+
+Songs are ranked by:
+
+1. Primary preference match score, descending.
+2. Spotify popularity, descending, when match scores are equal.
+3. Track ID, ascending, as a deterministic final tie-breaker.
+
+This ensures reproducible ordering when multiple tracks receive identical scores.
+
+### Negative Preferences
+
+The system also supports requests such as:
+
+```text
+I want energetic music, but no jazz.
+```
+
+Explicitly excluded genres are removed from the candidate pool before ranking.
+
+If the user specifies only an exclusion, such as "No jazz music, please," the system uses popularity-based ranking among the remaining songs rather than inventing positive preferences.
 
 ---
 
-## Limitations and Risks
+## 6. Sample Interactions and Reproducible Evidence
 
-The catalog contains only 10 songs, so genres and moods are unevenly represented and recommendations have little variety. Mood and genre matches are exact text comparisons, the weights and tempo scaling value are hand-chosen, and the system does not use listening history, lyrics, language, or context. Although danceability is present in the data, it does not affect the score. A small or imbalanced catalog can cause some songs and genres to be recommended more often than others.
+The following examples demonstrate observed application behavior. Recommendation results depend on the cleaned dataset and model configuration.
+
+### Example 1: Genre-Based Recommendation
+
+**Input:**
+
+```text
+I want some blues music.
+```
+
+**Extracted preference:**
+
+```text
+genre: blues
+```
+
+**Observed recommendations included:**
+
+```text
+1. Sweet Home Alabama — Lynyrd Skynyrd
+   Match Score: 100.00/100
+
+2. Cigarette Daydreams — Cage The Elephant
+   Match Score: 100.00/100
+
+3. For What It's Worth — Buffalo Springfield
+   Match Score: 100.00/100
+
+4. All Along the Watchtower — Jimi Hendrix
+   Match Score: 100.00/100
+
+5. Free Bird — Lynyrd Skynyrd
+   Match Score: 100.00/100
+```
+
+These results illustrate both genre-based ranking and a limitation of dataset labels. A perfect genre-only score indicates a match against the stored genre label, not an objective judgment of musical quality.
+
+### Example 2: Exclusion-Only Recommendation
+
+**Input:**
+
+```text
+No jazz music, please.
+```
+
+**Observed recommendation behavior:**
+
+```text
+Recommendation Type: Popular pick
+Why: Popular song outside excluded genres
+```
+
+Example returned tracks included:
+
+```text
+1. Unholy (feat. Kim Petras) — Sam Smith;Kim Petras
+2. Quevedo: Bzrp Music Sessions, Vol. 52 — Bizarrap;Quevedo
+3. I'm Good (Blue) — David Guetta;Bebe Rexha
+4. La Bachata — Manuel Turizo
+5. Tití Me Preguntó — Bad Bunny
+```
+
+No numerical preference score was displayed because the user had not supplied positive ranking preferences.
+
+### Example 3: Natural-Language Preference Extraction
+
+**Input:**
+
+```text
+I need something to get me through a tough workout.
+```
+
+**Observed parser results:**
+
+```text
+Thinking OFF:
+energy = None
+
+Thinking ON:
+energy = 0.8
+```
+
+This case demonstrates how additional LLM reasoning can improve interpretation of indirect preferences.
 
 ---
 
-## Reflection
+## 7. Reliability and Evaluation
 
-The project showed me that a recommender's output depends on both the features available and the weights chosen for them. A song can rank highly for different reasons, so returning an explanation helps make the score easier to inspect. Comparing three different preference profiles also showed that the same catalog can produce different rankings when user targets change.
+Reliability testing is an integrated component of VibeMatch AI.
 
-The results are only as representative as the small catalog and hand-built profiles allow. If a genre is missing or underrepresented, users who like it may receive poor or repetitive recommendations. The weight experiment also showed that adjusting one feature can change rankings for users whose preferences differ, so weights should be tested across diverse profiles rather than chosen from one example. See the [model card](model_card.md) for details about intended use, evaluation, limitations, and future work.
+The project uses automated unit tests, integration tests, deterministic validation, and experimental evaluation of LLM behavior.
+
+### Automated Tests
+
+The most recent completed test suite reported:
+
+```text
+39 passed in 65.86s
+```
+
+Testing includes:
+
+- Recommendation ranking consistency.
+- Missing and malformed dataset handling.
+- Preference extraction and validation.
+- Genre negation.
+- Genre alias normalization.
+- Overlapping genre matches.
+- Excluded-genre filtering.
+- Popularity fallback behavior.
+- Pipeline integration.
+
+### Qwen Thinking Mode Evaluation
+
+Eight music preference prompts were evaluated under Thinking OFF and Thinking ON configurations.
+
+Results from the recorded experiment:
+
+| Configuration | Exact Match | Accuracy | Average Latency |
+|---|---:|---:|---:|
+| Thinking OFF | 3/8 | 37.5% | 2.71 seconds |
+| Thinking ON | 5/8 | 62.5% | 13.41 seconds |
+| Thinking OFF + Hybrid Validator | 4/8 | 50.0% | Approximately 2.71 seconds |
+| Thinking ON + Hybrid Validator | 5/8 | 62.5% | Approximately 13.41 seconds |
+
+The Hybrid Validator results use the same model calls as their corresponding raw configurations. The latency figures represent the combined evaluation calls, not separately benchmarked validator latency.
+
+### Key Findings
+
+- Thinking improved recognition of some indirect music preferences.
+- Thinking introduced substantially longer response times.
+- Deterministic validation recovered some explicitly stated preferences omitted by the LLM.
+- Validation rules could also introduce errors when negation or genre aliases were mishandled.
+- Strict JSON exact-match evaluation sometimes penalized semantically reasonable additional preferences.
+
+### Reliability Improvements
+
+During development, several issues were discovered through testing:
+
+**Order invariance:** Equal-scoring songs initially changed order when dataset records were shuffled. A deterministic Track ID tie-breaker resolved the instability.
+
+**Negation handling:** Requests such as "I don't want jazz" were initially interpreted as positive genre preferences. The validator was extended to detect negative constraints.
+
+**Genre normalization:** Alternative spellings such as Jpop, J-pop, and J Pop initially caused inconsistent matching. Canonicalization and overlapping-match resolution improved recognition.
+
+**Unsupported preferences:** The system distinguishes explicit preferences from missing information and avoids automatically assigning defaults to every absent field.
+
+### Evaluation Limitations
+
+The eight-prompt Thinking experiment is an exploratory comparison rather than a statistically representative benchmark.
+
+Its results are sensitive to prompt selection, model configuration, and labeling decisions. Additional evaluation with independent prompts and human judgments would be necessary to estimate real-world reliability.
+
+---
+
+## 8. Design Decisions and Trade-Offs
+
+### Why Use a Local LLM?
+
+Using Ollama allows the project to run without requiring a paid cloud LLM API.
+
+It also provides local control over model selection and inference behavior.
+
+The primary trade-off is inference latency, especially when Thinking mode is enabled.
+
+### Why Not Let the LLM Recommend Songs Directly?
+
+Direct LLM-generated recommendations would make it harder to guarantee that suggested songs exist in the dataset or satisfy user constraints.
+
+VibeMatch instead uses the LLM for interpretation and a separate algorithm for retrieval and ranking.
+
+This provides more transparent behavior and enables deterministic testing.
+
+### Why Combine LLMs with Rules?
+
+LLMs can interpret flexible language but may miss explicit details or infer unsupported preferences.
+
+Deterministic rules are useful for well-defined tasks such as genre normalization, BPM recognition, and simple negation handling.
+
+The hybrid approach combines the strengths of both methods while acknowledging their limitations.
+
+### Why Not Use RAG?
+
+The current architecture uses structured retrieval and ranking over a local music dataset rather than a full retrieval-augmented generation pipeline.
+
+RAG could be a future extension for retrieving richer song descriptions and grounding natural-language explanations.
+
+However, adding RAG was not necessary for the core project objective of explainable feature-based music recommendation.
+
+---
+
+## 9. Limitations and Future Work
+
+Current limitations include:
+
+- Inconsistent interpretation of some indirect music preferences.
+- Increased latency when Thinking mode is enabled.
+- Imperfect or overly broad genre labels in the source dataset.
+- Potential duplicate compositions across different Spotify track IDs.
+- Limited support for multiple simultaneously requested positive genres.
+- Limited understanding of complex negation and conversational corrections.
+- Dependence on a locally running Ollama service.
+
+Future improvements could include multi-genre support, semantic retrieval, more robust preference extraction, diversification of recommended artists, and larger-scale human evaluation.
+
+---
+
+## 10. Reflection
+
+VibeMatch AI demonstrated that building an AI application involves more than connecting a language model to a user interface.
+
+One of the most important lessons was that an LLM can be useful for interpreting flexible language while still requiring deterministic validation and independent testing.
+
+The project also showed the importance of evaluating errors rather than focusing only on aggregate accuracy. Several failures were introduced by validation rules intended to improve reliability, illustrating that safeguards themselves must be tested.
+
+Finally, the distinction between language understanding and recommendation ranking helped produce a system that is more transparent and easier to maintain than an approach that delegates every decision to an LLM.
+
+---
+
+## 11. Repository and Portfolio
+
+**GitHub Repository:**
+
+https://github.com/xiaosiqaq-cjdl/VibeMatch-AI-Final
+
+VibeMatch AI represents an applied AI engineering project combining natural-language processing, structured data processing, recommendation algorithms, and reliability evaluation.
+
+It demonstrates how model-driven components and deterministic software can be integrated into a practical, explainable system.

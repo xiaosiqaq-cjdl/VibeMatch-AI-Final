@@ -1,71 +1,146 @@
-# 🎧 Model Card: VibeMatch Music Recommender
+# VibeMatch AI — Model Card
 
-## 1. Model Name
+## 1. System Overview
 
-**VibeMatch Music Recommender**
+**System Name:** VibeMatch AI  
+**Application:** Explainable Music Recommendation  
+**Language Model:** Qwen3 4B (via Ollama)  
+**Primary AI Feature:** Natural-Language Preference Extraction  
+**Reliability Approach:** Hybrid LLM and Deterministic Validation
 
----
+VibeMatch AI uses a locally hosted language model to interpret users' music preferences and convert them into structured attributes. A separate content-based recommendation algorithm retrieves and ranks songs from a cleaned Spotify dataset.
 
-## 2. Intended Use  
+The language model does not directly generate the final song recommendations.
 
-VibeMatch is a classroom simulation that ranks songs from a small catalog according to a supplied user preference profile. It assumes the profile's genre, mood, energy, tempo, valence, and acoustic preference are meaningful targets for the user. The current command-line app uses one example profile defined in `src/main.py`; it is not an interactive or production recommendation service.
+## 2. Intended Use
 
----
+VibeMatch AI is intended for users who want music recommendations using natural-language descriptions instead of manually selecting numerical audio features.
 
-## 3. How the Model Works  
+Supported requests include genre preferences, mood descriptions, energy levels, tempo preferences, and explicit genre exclusions.
 
-The recommender compares each song with the user's profile. It rewards exact genre and mood matches and gives similarity scores for valence, energy, and tempo. Mood and valence are grouped as emotional fit; energy and tempo are grouped as activity fit, so related signals do not each receive a full independent weight. Acousticness is scored according to whether the user prefers acoustic or less-acoustic music. These parts are combined into a 0-to-100 score, and songs are sorted from highest to lowest. The system also returns brief reasons for each recommendation.
+The system is designed as an educational AI engineering project rather than a production-grade music recommendation service.
 
-The implementation adds CSV loading with numeric type conversion, the weighted scoring rule, score explanations, and ranked top-k results. The current app uses a fixed example profile; it does not yet ask for a user's current mood or accept arbitrary user-defined soft preferences beyond the acoustic preference.
+## 3. Limitations and Potential Biases
 
----
+### Language Understanding
 
-## 4. Data  
+Qwen3 4B can interpret many direct and indirect music requests, but its performance is not always consistent.
 
-The model uses the 10 rows in `data/songs.csv`. The catalog includes pop, lofi, rock, ambient, jazz, synthwave, and indie pop; moods include happy, chill, intense, relaxed, moody, and focused. Each row has title, artist, genre, mood, energy, tempo, valence, danceability, and acousticness. No songs were added or removed. The sample does not represent the breadth of music or listener preferences, and danceability is currently loaded but not used in scoring.
+The model may omit preferences, infer unnecessary attributes, or misunderstand complex sentences.
 
----
+For example, requests involving indirect emotional goals sometimes failed under Non-Thinking mode.
 
-## 5. Strengths  
+### Dataset Bias
 
-The system behaves predictably for profiles that closely match attributes represented in the catalog. In the tested profiles, pop/happy preferences ranked Sunrise City first, chill/acoustic lofi ranked Library Rain first, and intense rock ranked Storm Runner first. Its separate score components also make it possible to explain why one song outranks another.
+The cleaned Spotify dataset contains 89,583 unique track IDs across 113 genre labels.
 
----
+However, Spotify genre labels may not accurately represent the musical characteristics of every recording.
 
-## 6. Limitations and Bias 
+Popularity-based ranking can also favor already popular artists and reduce the visibility of less-known music.
 
-The 10-song catalog is small and imbalanced: some genres and moods have only one example, so users with less represented tastes have fewer good matches. Exact genre and mood checks may miss related labels (for example, `pop` and `indie pop`). The model does not use listening history, lyrics, language, artist familiarity, or context, and danceability does not currently affect results. Hand-selected weights and tempo scaling may favor some profiles or songs; the system also does not enforce variety, so similar tracks can appear together. Scores are relative matches to the supplied profile, not probabilities that a person will enjoy a song.
+### Limited Personalization
 
----
+VibeMatch primarily uses preferences expressed in the current request. It does not learn long-term musical tastes from listening histories.
 
-## 7. Evaluation  
+The system also has limited support for multiple simultaneous positive genre preferences.
 
-I tested the recommender with three different user profiles and checked whether the highest-ranked songs matched each profile's genre, mood, energy, tempo, valence, and acoustic preferences:
+### Evaluation Limitations
 
-- **High-Energy Pop:** Sunrise City ranked first (96.15), followed by Gym Hero (77.16) and Rooftop Lights (58.41).
-- **Chill Lofi:** Library Rain ranked first (97.44), followed by Midnight Coding (96.39) and Focus Flow (76.62).
-- **Deep Intense Rock:** Storm Runner ranked first (98.55), followed by Gym Hero (60.70) and Night Drive Loop (37.21).
+Our LLM evaluation used a small set of manually defined test cases.
 
-The top recommendations matched the intended profiles: upbeat pop ranked highly for the high-energy pop listener, calm and acoustic lofi ranked highly for the chill listener, and intense rock ranked first for the rock listener. The two leading Chill Lofi songs scored very closely, showing how several similar tracks can both be strong matches.
+Consequently, the observed accuracy should not be interpreted as a general measure of model performance across all music requests.
 
-I also added automated tests for these three profiles. The tests check that each expected song ranks first, that three results are returned, and that the results are ordered from highest to lowest score. Running `python -m pytest tests\test_recommender.py -q` completed with **5 passed**. This evaluation is limited by the small catalog of 10 songs and checks only a few hand-built profiles; it does not measure real user satisfaction.
+## 4. Potential Misuse and Mitigation
 
-I also tried a weight-shift experiment, halving the genre weight and doubling the effective energy weight while keeping the other feature weights fixed. The top result stayed the same for all four evaluated profiles, but some lower-ranked songs moved substantially, especially for the sample pop profile and the deep rock profile. The comparison is documented in the README; it shows ranking sensitivity, not that the adjusted weights are objectively better.
+VibeMatch is a relatively low-risk recommendation application, but several risks remain.
 
----
+**Misleading Recommendations:** Users may interpret a high matching score as proof of musical quality. To address this, the system provides explanations based on the attributes actually used in ranking.
 
-## 8. Future Work
+**Unreliable Genre Classification:** Incorrect dataset labels may produce recommendations that do not match users' expectations. This limitation is documented rather than concealed.
 
-- Ask users for their current mood and desired listening experience, then map that choice to explicit target mood, valence, energy, and tempo values.
-- Expand and balance the catalog so more genres and moods have multiple examples.
-- Explore danceability and user-specified soft preferences, while avoiding double-counting features already in the core score.
-- Test alternative weights across more diverse profiles and record how rankings change.
-- Add a diversity step so the top recommendations are not all very similar.
+**Unintended Preference Inference:** The language model may assume preferences that users never expressed. Deterministic validation, null-valued unspecified fields, and clarification behavior help limit this issue.
 
----
+**Privacy:** The language model runs locally through Ollama, avoiding the need to transmit preference requests to a paid external LLM API. However, publicly shared Gradio interfaces still require appropriate access controls and network security.
 
-## 9. Personal Reflection  
+The system does not claim to provide psychological or medical treatment through music recommendations.
 
-Building this project showed me how song features and scoring weights turn a user's preferences into a ranked list. I found that grouping related features such as energy and tempo makes the logic easier to explain, while the weight-shift experiment showed that changing one preference can noticeably reorder recommendations. Testing several profiles helped me see why a recommender should be evaluated with different users rather than only one example.
+## 5. Reliability Testing and Unexpected Findings
 
-The small catalog also made the limitations clear: a scoring formula cannot recommend music that is missing from its data, and a high score is not proof that someone will like a song. I would want to test with more songs and more listener profiles before drawing stronger conclusions.
+Reliability was evaluated using automated tests, LLM experiments, and manual review.
+
+### Automated Testing
+
+The latest completed full test suite reported:
+
+**39 tests passed.**
+
+Tests covered recommendation ranking, data validation, genre normalization, negation handling, exclusion filtering, and pipeline integration.
+
+### Thinking Mode Comparison
+
+| Configuration | Exact Match Accuracy | Average Latency |
+|---|---:|---:|
+| Thinking OFF | 37.5% (3/8) | 2.71 s |
+| Thinking ON | 62.5% (5/8) | 13.41 s |
+| Thinking OFF + Validator | 50.0% (4/8) | Approximately 2.71 s |
+| Thinking ON + Validator | 62.5% (5/8) | Approximately 13.41 s |
+
+These figures describe one exploratory eight-request evaluation, not a statistically representative benchmark.
+
+### What Surprised Me
+
+One surprising finding was that enabling Thinking improved the interpretation of indirect music preferences but increased inference time considerably.
+
+Another unexpected finding was that deterministic validation rules could introduce errors of their own.
+
+For instance, the phrase "I want music without acoustic instruments" initially caused the validator to incorrectly add `genre=acoustic`, even though the LLM had correctly identified the negative acoustic preference.
+
+This demonstrated that reliability mechanisms themselves require independent testing.
+
+We also discovered that genre aliases and overlapping string matches could cause incorrect results. For example, the system initially interpreted `J-pop` as `pop` because the shorter genre name overlapped with the longer one.
+
+These failures motivated additional regression tests and improved normalization logic.
+
+## 6. Collaboration with AI
+
+AI assistance was used during implementation, debugging, testing, and documentation.
+
+However, AI-generated suggestions were evaluated rather than accepted automatically.
+
+### AI Suggestion Accepted
+
+One useful suggestion was to develop automated reliability tests and compare the language model's Thinking and Non-Thinking configurations.
+
+I adopted this approach because it made system behavior measurable rather than relying only on a few successful demonstrations.
+
+The resulting experiments identified important trade-offs between semantic interpretation accuracy and inference latency.
+
+### AI Suggestion Revised
+
+During development, we considered using an LLM more directly for music recommendations.
+
+I chose to retain a separate deterministic recommendation algorithm instead of making the language model responsible for selecting songs.
+
+This decision preserved transparent scoring, reproducible ranking, and clearer separation between understanding user intent and evaluating songs.
+
+I also revised several AI-suggested validation rules after tests revealed that they could introduce false-positive genre matches.
+
+### Human Oversight
+
+I reviewed test failures, evaluated actual recommendation outputs, questioned architectural decisions, and used regression tests to verify changes.
+
+This process reinforced the importance of treating AI-generated code and explanations as proposals requiring validation.
+
+## 7. Responsible AI Reflection
+
+The most important lesson from this project was that producing a working AI application is not the same as producing a reliable one.
+
+A system may appear successful during demonstrations while still failing on small changes in wording, punctuation, negation, or musical context.
+
+Combining a language model with conventional software improved transparency, but the additional validation layer also created new sources of error.
+
+I learned to measure system behavior, preserve reproducible evidence, and examine individual failures before making architectural changes.
+
+In future work, I would prioritize larger human-labeled evaluation datasets, better genre metadata, more expressive preference representations, and systematic testing of semantic ambiguity.
+
+VibeMatch AI demonstrates how language models and deterministic algorithms can complement each other while retaining clear boundaries and acknowledging uncertainty.
